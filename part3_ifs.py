@@ -514,7 +514,14 @@ def box_count(points, n_grid: int = 8192, bounds=None, device=None,
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    pts = torch.as_tensor(np.asarray(points), device=device, dtype=torch.float64)
+    # `points` may already be a tensor on the compute device -- going through
+    # np.asarray() would raise "can't convert cuda:0 device type tensor to
+    # numpy", and would round-trip through host memory even when it works.
+    if torch.is_tensor(points):
+        pts = points.to(device=device, dtype=torch.float64)
+    else:
+        pts = torch.as_tensor(np.asarray(points), device=device,
+                              dtype=torch.float64)
 
     if bounds is None:
         lo = pts.min(0).values
