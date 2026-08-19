@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=lab1-part3-ifs
 #SBATCH --partition=comp3710
+#SBATCH --account=comp3710
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
 #SBATCH --time=00:40:00
 #SBATCH --output=logs/part3_%j.out
 #SBATCH --error=logs/part3_%j.err
@@ -15,10 +15,15 @@
 # Partition notes for Rangpur (check with `sinfo -s` before submitting):
 #   comp3710 / a100 / a100-grind  -> the same a100-[0-9] nodes; same queue,
 #                                    renaming does not shorten the wait
-#   a100-test                     -> a100-a/b, usually idle, but QOS caps the
-#                                    wall time at 20 min AND rejects --mem,
-#                                    so it cannot run this 40 min / 32G job
+#   a100-test                     -> a100-a/b, usually idle, but the QOS caps
+#                                    wall time at 20 min: too short for --scale full
 #   p100                          -> older card, rarely queued
+#
+# Two things this cluster requires, both of which fail at submission time:
+#   --account=comp3710  the partition sets AllowAccounts=comp3710, and the
+#                       default account s4984244 is refused (Reason=PartitionConfig)
+#   no --mem at all     the nodes run RealMemory=1, so any memory request gives
+#                       "Memory specification can not be satisfied"
 
 set -euo pipefail
 
