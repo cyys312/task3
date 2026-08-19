@@ -439,6 +439,60 @@ def transient_snapshots(ifs, steps, n_points=20_000, device=None,
 # --------------------------------------------------------------------------- #
 
 
+def deterministic_net(ifs: IFS, eps: float, diameter: float = 11.1,
+                      device=None, dtype=torch.float32,
+                      max_live: int = 20_000_000, max_depth: int = 400):
+    """A probability-free eps-net of the attractor, by adaptive expansion.
+
+    The chaos game needs probabilities, and the probabilities decide where the
+    samples land.  That makes it a poor instrument for answering "is the
+    *support* the same?".  This routine removes them entirely.
+
+    Start from one point and apply *all* K maps at every level, carrying for
+    each node the product of Lipschitz constants along its word,
+    r = prod_j sigma_1(A_{i_j}).  That node is within  r * diameter  of the
+    attractor, so once  r * diameter < eps  it is retired: it is already a
+    valid representative at resolution eps, and expanding it further would only
+    add detail finer than one pixel.  Live nodes keep splitting.
+
+    The output covers the attractor to within eps *by construction* -- a
+    genuine cover, not a random draw -- so box counting it at scales >= eps is
+    unbiased with respect to the choice of p.  Naive full expansion to the same
+    depth would need K^d nodes (4^46 for the fern at pixel resolution);
+    adaptive pruning needs only O(eps^-D), about 10^6 here.
+
+    Every level is one batched einsum over all live nodes at once.
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    A, b, _ = ifs.tensors(device, dtype)
+    sig = torch.tensor(ifs.lipschitz(), device=device, dtype=dtype)
+
+    live = torch.zeros((1, 2), device=device, dtype=dtype)
+    r = torch.full((1,), diameter, device=device, dtype=dtype)
+    retired, depth, peak = [], 0, 1
+
+    while live.shape[0] and depth < max_depth:
+        depth += 1
+        # expand: (K, M, 2) -> (K*M, 2); one einsum covers every map at once
+        nxt = (torch.einsum("kij,mj->kmi", A, live)
+               + b[:, None, :]).reshape(-1, 2)
+        nr = (r[None, :] * sig[:, None]).reshape(-1)
+
+        done = nr < eps
+        if bool(done.any()):
+            retired.append(nxt[done].clone())
+        live, r = nxt[~done], nr[~done]
+        peak = max(peak, live.shape[0])
+        if live.shape[0] > max_live:
+            raise MemoryError(f"live set hit {live.shape[0]:,} at depth "
+                              f"{depth}; increase eps (now {eps:g})")
+
+    pts = torch.cat(retired) if retired else live
+    return pts, {"depth": depth, "eps": eps, "peak_live": peak,
+                 "n_points": int(pts.shape[0])}
+
+
 def box_count(points, n_grid: int = 8192, bounds=None, device=None,
               factor: int = 2):
     """Box counts N(eps) for eps = side/n_grid * factor^j, j = 0, 1, 2, ...

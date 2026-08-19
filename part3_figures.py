@@ -78,6 +78,14 @@ def fig_fern(out, n_points, resolution, results):
         P.FERN, n_points=n_points, n_iter=140, resolution=resolution)
     results["hero_render"] = info
 
+    # measure the dimension here so it can be annotated onto the deliverable
+    # itself -- the lab sheet asks for the analysis to be "part of the output"
+    dim = P.measure_dimension(P.FERN, n_iter=100, n_grid=4096,
+                              n_points=max(3_000_000,
+                                           min(n_points, 20_000_000)))
+    aff = P.FERN.affinity_dimension()
+    results["hero_dimension"] = {"measured": dim["dimension"],
+                                 "r2": dim["r2"], "affinity_bound": aff}
 
     fig, ax = plt.subplots(figsize=(6, 11))
     ax.imshow(tone_map(hist), cmap=FERN_CMAP,
@@ -94,6 +102,30 @@ def fig_fern(out, n_points, resolution, results):
     for s in ax.spines.values():
         s.set_color("#1c7a37")
 
+    # -- inset: the box-counting fit, on the deliverable itself ------------ #
+    ins = ax.inset_axes([0.04, 0.545, 0.30, 0.225])
+    eps, counts, ok = dim["eps"], dim["counts"], dim["mask"]
+    x, y = np.log(1 / eps), np.log(counts)
+    ins.plot(x, y, "o", ms=2.5, color="#2f6b40")
+    ins.plot(x[ok], y[ok], "o", ms=3.2, color="#c9f2a0")
+    xf = np.linspace(x[ok].min(), x[ok].max(), 10)
+    ins.plot(xf, dim["dimension"] * xf + dim["intercept"], "-", lw=1.4,
+             color="#e6a532")
+    ins.set_facecolor("#0b1c12")
+    ins.set_xlabel(r"$\log(1/\epsilon)$", fontsize=7, color="#9fd4a8")
+    ins.set_ylabel(r"$\log N(\epsilon)$", fontsize=7, color="#9fd4a8")
+    ins.tick_params(labelsize=6, colors="#9fd4a8", length=2)
+    for s in ins.spines.values():
+        s.set_color("#2f6b40")
+    ins.grid(alpha=0.18, color="#9fd4a8")
+
+    ax.text(0.04, 0.965,
+            "box-counting dimension\n"
+            f"$D_B$ = {dim['dimension']:.3f}   ($R^2$ = {dim['r2']:.4f})\n"
+            f"Falconer bound  {aff:.3f}\n"
+            "no closed form: $f_3,f_4$ are self-affine",
+            transform=ax.transAxes, fontsize=8.5, color="#c9f2a0",
+            va="top", linespacing=1.55)
     fig.tight_layout()
     fig.savefig(os.path.join(out, "part3_fern.png"), dpi=150,
                 facecolor="#07120b")
@@ -313,14 +345,95 @@ def fig_probs(out, n_points, results):
         rows.append({"weights": ifs.name, "measured_dim": round(
             d["dimension"], 4), "occupancy": round(info["occupancy"], 4)})
     fig.suptitle(
-        "The probabilities are a *rendering* choice, not part of the fractal.\n"
-        "All three panels have the same support -- the same attractor and the\n"
-        "same dimension; only the invariant measure, the brightness, changes.",
-        fontsize=9.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.88))
+        "The probabilities are importance sampling, not part of the fractal.\n"
+        "In theory all $p_i>0$ give the same *support*, so the same attractor "
+        "and the same dimension.  In practice the right-hand panel measures\n"
+        "$D_B\\approx1.27$, not $1.80$ -- with $p_1=0.25$ a quarter of all "
+        "steps collapse the point back onto the stem ($\\det A_1=0$), the\n"
+        "invariant measure concentrates there, and a finite sample never "
+        "reaches the fine leaflets.  Raising the iteration count does not fix\n"
+        "it (300 steps gives 1.297): this is the stationary measure, not a "
+        "transient.  Barnsley's weights are chosen so that points arrive at a\n"
+        "rate matching each region's area, $p_i\\propto|\\det A_i|$ -- and "
+        "$p_1=0.01$ rather than $0$ because the stem has zero area yet must "
+        "still be drawn.\n"
+        "The probability-free check is in part3_net.png.", fontsize=9)
+    fig.tight_layout(rect=(0, 0, 1, 0.83))
     fig.savefig(os.path.join(out, "part3_probs.png"), dpi=130)
     plt.close(fig)
     results["probability_study"] = rows
+
+
+# --------------------------------------------------------------------------- #
+# 5b. probability-free measurement: the adaptive deterministic net
+# --------------------------------------------------------------------------- #
+
+
+def fig_net(out, eps_list, n_grid, results):
+    rows, nets = [], {}
+    for eps in eps_list:
+        try:
+            pts, info = P.deterministic_net(P.FERN, eps=eps)
+        except MemoryError as exc:
+            print(f"   [net] eps={eps:g} skipped: {exc}")
+            continue
+        e, c = P.box_count(pts, n_grid=n_grid)
+        ok = e >= eps          # the net carries no information below eps
+        fit = P.fit_dimension(e[ok], c[ok], n_points=info["n_points"],
+                              n_grid=n_grid)
+        rows.append({"eps": eps, "depth": info["depth"],
+                     "peak_live": info["peak_live"],
+                     "n_points": info["n_points"],
+                     "dimension": round(fit["dimension"], 4),
+                     "r2": round(fit["r2"], 5), "scales": fit["n_used"]})
+        if len(nets) < 4:
+            nets[eps] = pts[torch.randperm(
+                pts.shape[0], device=pts.device)[:400_000]].cpu().numpy()
+        del pts
+
+    fig = plt.figure(figsize=(14, 5.4))
+    gs = fig.add_gridspec(1, len(nets) + 1,
+                          width_ratios=[1] * len(nets) + [2.0], wspace=0.3)
+    for j, (eps, pts) in enumerate(sorted(nets.items(), reverse=True)):
+        ax = fig.add_subplot(gs[0, j])
+        ax.scatter(pts[:, 0], pts[:, 1], s=0.08, c="#1c7a37", linewidths=0)
+        ax.set_aspect("equal")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(f"$\\epsilon$ = {eps:g}\n{len(pts):,} shown", fontsize=9)
+
+    ax = fig.add_subplot(gs[0, len(nets)])
+    if rows:
+        e = np.array([r["eps"] for r in rows])
+        d = np.array([r["dimension"] for r in rows])
+        ax.semilogx(e, d, "o-", color="#1c7a37", label="$D_B$ of the net")
+        aff = P.FERN.affinity_dimension()
+        ax.axhline(aff, ls="--", color="#4a90d9",
+                   label=f"Falconer affinity dim = {aff:.4f} (upper bound)")
+        cg = results.get("dimension_table", [{}])[-1].get("measured")
+        if cg:
+            ax.axhline(cg, ls=":", color="#c8503f",
+                       label=f"chaos game, Barnsley $p$ = {cg:.3f}")
+        ax.set_xlabel(r"net resolution $\epsilon$")
+        ax.set_ylabel("$D_B$")
+        ax.invert_xaxis()
+        ax.legend(fontsize=7.5, loc="lower right")
+        ax.grid(alpha=0.3, which="both")
+    results["deterministic_net"] = rows
+
+    fig.suptitle(
+        "A probability-free measurement.  Expand *every* map at every level; "
+        "retire a branch once its accumulated contraction\n"
+        "puts it within $\\epsilon$ of the attractor.  The result is a "
+        "guaranteed $\\epsilon$-cover, not a random draw, so it does not\n"
+        "depend on $p$ -- this is the instrument that settles what "
+        "part3_probs.png raised.  Full expansion to depth 48 would need\n"
+        "$4^{48}$ nodes; adaptive pruning needs $O(\\epsilon^{-D})\\approx"
+        "10^6$, and every level is one batched einsum.  Refining the net "
+        "raises $D_B$ towards the bound.", fontsize=9.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.82))
+    fig.savefig(os.path.join(out, "part3_net.png"), dpi=130)
+    plt.close(fig)
 
 
 # --------------------------------------------------------------------------- #
@@ -487,6 +600,8 @@ def main():
         var_points=1_500_000 if full else 200_000,
         scaling=[10 ** k for k in range(4, 9)] if full
         else [10 ** k for k in range(3, 7)],
+        net_eps=[0.08, 0.04, 0.02, 0.01, 0.005, 0.0025, 0.00125] if full
+        else [0.08, 0.04, 0.02, 0.01, 0.005],
     )
 
     dev = _dev()
@@ -510,6 +625,8 @@ def main():
         ("boxcount", lambda: fig_boxcount(args.out, cfg["dim_points"],
                                           cfg["dim_grid"], results)),
         ("probs", lambda: fig_probs(args.out, cfg["prob_points"], results)),
+        ("net", lambda: fig_net(args.out, cfg["net_eps"], cfg["dim_grid"],
+                                results)),
         ("deterministic", lambda: fig_deterministic(args.out)),
         ("variants", lambda: fig_variants(args.out, cfg["var_points"])),
         ("scaling", lambda: fig_scaling(args.out, cfg["scaling"], results)),
