@@ -110,6 +110,42 @@ class IFS:
                 hi = mid
         return 0.5 * (lo + hi)
 
+    def affinity_dimension(self) -> float:
+        """Falconer's affinity dimension, from the singular value function.
+
+        Moran's equation needs similarities.  When the maps are self-affine
+        (different contraction in different directions, as in f3 and f4 of the
+        fern) the right generalisation replaces s_i^D by Falconer's singular
+        value function
+
+            phi^s(A) = sigma_1^s                      for 0 <= s <= 1
+            phi^s(A) = sigma_1 * sigma_2^(s-1)        for 1 <  s <= 2
+
+        and solves  sum_i phi^s(A_i) = 1.  Falconer (1988) proved this is an
+        *upper bound* for the box dimension of the attractor, attained for
+        almost every choice of translations.  So it is not an exact answer for
+        this particular fern -- but it is a principled number to compare the
+        measurement against, and it reduces to Moran's equation when every map
+        is a similarity.
+        """
+        s1, s2 = self.singular_values().T
+
+        def phi_sum(s: float) -> float:
+            if s <= 1.0:
+                return float(np.sum(s1**s))
+            return float(np.sum(s1 * np.where(s2 > 0, s2, 0.0) ** (s - 1)))
+
+        lo, hi = 0.0, 2.0
+        if phi_sum(2.0) > 1.0:      # the attractor has positive area
+            return 2.0
+        for _ in range(200):        # phi_sum is strictly decreasing in s
+            mid = 0.5 * (lo + hi)
+            if phi_sum(mid) > 1.0:
+                lo = mid
+            else:
+                hi = mid
+        return 0.5 * (lo + hi)
+
     def burn_in_for(self, pixel_size: float, diameter: float) -> int:
         """Iterations needed for the transient to fall below one pixel.
 
