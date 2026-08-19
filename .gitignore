@@ -1,0 +1,24 @@
+# Slurm logs (job output, regenerated on every run)
+logs/
+*.out
+*.err
+
+# local Python env / caches
+.venv/
+__pycache__/
+*.py[cod]
+
+# demo notes -- not part of the submission
+Lab1_Part3_笔记.md
+
+# macOS
+.DS_Store
+
+# local CPU sanity-run figures
+out_local/
+
+# commit-history staging kit (deleted after use)
+.history/
+
+# verification run of the corrected figure pipeline
+out_check/
