@@ -1,0 +1,76 @@
+==========================================================================
+Barnsley fern -- fractal dimension analysis
+==========================================================================
+  torch 2.13.0+cpu   device cpu
+  scale = small   samples = 2,000,000   grid = 2048
+
+==========================================================================
+[1/3]  Structural diagnostics -- does a closed form exist?
+==========================================================================
+Barnsley fern: K = 4 affine maps
+   map       p   sigma1   sigma2       det  kind
+  f1     0.010   0.1600   0.0000    0.0000  SINGULAR (rank 1)
+  f2     0.850   0.8509   0.8509    0.7241  similarity
+  f3     0.070   0.3407   0.3047    0.1038  self-affine
+  f4     0.070   0.3792   0.2870   -0.1088  self-affine, flips orientation
+  Lipschitz constant L = max sigma1 = 0.8509
+  Moran similarity dimension: N/A (not all maps are similarities)
+
+  Moran's equation  sum_i s_i^D = 1  does NOT apply here:
+  it requires every map to be a similarity (sigma_1 = sigma_2),
+  and f3, f4 contract by different amounts in different
+  directions.  The fern is self-AFFINE, not self-SIMILAR.
+
+  The correct generalisation is Falconer's singular value
+  function  phi^s(A) = sigma_1 * sigma_2^(s-1),  solved for
+  sum_i phi^s(A_i) = 1.  Falconer (1988) proves this is an
+  UPPER BOUND on the box dimension, attained for almost every
+  choice of translation vectors.
+
+  ==> Falconer affinity dimension  =  1.8433   (upper bound)
+
+==========================================================================
+[2/3]  Validating the estimator on sets with a known answer
+==========================================================================
+  The estimator must reproduce known values before it is trusted
+  on a set whose answer we do not know.
+
+  set                     measured    exact    error       R^2  scales
+  --------------------------------------------------------------------
+  Cantor dust               1.2663   1.2619    0.35%   0.99682       4
+  Sierpinski triangle       1.6068   1.5850    1.38%   0.99993       8
+  Filled square             1.9999   2.0000    0.00%   1.00000       8
+
+  ==> worst error 1.38%  -->  estimator ACCEPTED
+
+==========================================================================
+[3/3]  Barnsley fern
+==========================================================================
+  (a) chaos game, Barnsley's probabilities
+      D_B = 1.8000    R^2 = 0.99992    8 scales over 2.11 decades
+      fit window: eps in [1.95e-02, 2.50e+00],  >= 40 points per box
+
+  (b) deterministic eps-net -- uses NO probabilities at all,
+      so it measures the support rather than the invariant measure
+
+            eps   depth   peak live       points      D_B       R^2
+      -------------------------------------------------------------
+           0.05      34       9,816      200,086   1.7559   0.99990
+           0.02      40      50,576    1,272,172   1.7667   0.99994
+           0.01      44     216,617    5,253,025   1.8063   0.99999
+          0.005      48     744,595   21,614,140   1.8174   0.99999
+
+==========================================================================
+RESULT
+==========================================================================
+  chaos game (Barnsley p)      D_B = 1.8000
+  deterministic net, finest    D_B = 1.8174
+  Falconer affinity dimension        1.8433   (theoretical upper bound)
+
+  Two independent methods agree to 0.017, and both sit
+  below the bound as they must.  Refining the net raises the
+  estimate monotonically towards 1.843: the deficit is a
+  finite-resolution effect, not a disagreement with theory.
+
+  ==> D_B(Barnsley fern) ~ 1.82, bounded above by 1.8433
+

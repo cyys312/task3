@@ -1,0 +1,52 @@
+{
+  "device": "cpu",
+  "torch": "2.13.0+cpu",
+  "scale": "small",
+  "config": {
+    "hero_points": 400000,
+    "hero_res": 700,
+    "map_points": 250000,
+    "dim_points": 1500000,
+    "dim_grid": 2048,
+    "prob_points": 400000,
+    "var_points": 200000,
+    "scaling": [
+      1000,
+      10000,
+      100000,
+      1000000
+    ],
+    "net_eps": [
+      0.08,
+      0.04,
+      0.02,
+      0.01,
+      0.005
+    ]
+  },
+  "gpu": null,
+  "fern_structure": "Barnsley fern: K = 4 affine maps\n   map       p   sigma1   sigma2       det  kind\n  f1     0.010   0.1600   0.0000    0.0000  SINGULAR (rank 1)\n  f2     0.850   0.8509   0.8509    0.7241  similarity\n  f3     0.070   0.3407   0.3047    0.1038  self-affine\n  f4     0.070   0.3792   0.2870   -0.1088  self-affine, flips orientation\n  Lipschitz constant L = max sigma1 = 0.8509\n  Moran similarity dimension: N/A (not all maps are similarities)",
+  "fern_affinity_dimension": 1.8433176261664808,
+  "hero_render": {
+    "device": "cpu",
+    "dtype": "float32",
+    "n_points": 400000,
+    "n_iter": 140,
+    "burn_in": 46,
+    "points_plotted": 37600000,
+    "map_applications": 56000000,
+    "seconds": 4.58609408800001,
+    "points_per_second": 8198697.906871186,
+    "pixel_size": 0.007186233357020787,
+    "resolution": [
+      1438,
+      700
+    ],
+    "occupancy": 0.3119719922542572
+  },
+  "hero_dimension": {
+    "measured": 1.8022987642613302,
+    "r2": 0.9999334157440564,
+    "affinity_bound": 1.8433176261664808
+  }
+}
