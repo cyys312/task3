@@ -68,6 +68,12 @@ def _dev():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def _dev_label(dev=None):
+    """Device name for figure titles: the actual card, not just "cuda"."""
+    dev = _dev() if dev is None else dev
+    return torch.cuda.get_device_name(dev) if dev.type == "cuda" else str(dev)
+
+
 # --------------------------------------------------------------------------- #
 # 1. the fern itself
 # --------------------------------------------------------------------------- #
@@ -97,8 +103,9 @@ def fig_fern(out, n_points, resolution, results):
         f"Barnsley fern -- parallel chaos game in PyTorch\n"
         f"{info['n_points']:,} chains x {info['n_iter']} steps  "
         f"= {info['points_plotted']:,} points  |  "
-        f"{info['seconds']:.2f} s on {info['device']}  |  "
-        f"burn-in {info['burn_in']} steps", fontsize=9, color="#c9f2a0")
+        f"burn-in {info['burn_in']} steps\n"
+        f"{info['seconds']:.2f} s on {info['device']}",
+        fontsize=9, color="#c9f2a0")
     for s in ax.spines.values():
         s.set_color("#1c7a37")
 
@@ -559,7 +566,7 @@ def fig_scaling(out, sizes, results):
     a1.loglog(n, t[-1] * n / n[-1], "--", color="#888", label="ideal $O(N)$")
     a1.set_xlabel("chains $N$")
     a1.set_ylabel("wall time (s), 60 iterations")
-    a1.set_title(f"cost is linear once the device is saturated\n({dev})")
+    a1.set_title(f"cost is linear once the device is saturated\n({_dev_label(dev)})")
     a1.legend(fontsize=8)
     a1.grid(alpha=0.3, which="both")
 

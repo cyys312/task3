@@ -328,7 +328,10 @@ def chaos_game(
 
     plotted = int((n_iter - burn_in) * n_points)
     info = {
-        "device": str(device),
+        # report the actual card rather than just "cuda": the figure title is
+        # the evidence that this ran on the A100 and not on a laptop CPU
+        "device": (torch.cuda.get_device_name(device)
+                   if device.type == "cuda" else str(device)),
         "dtype": str(dtype).replace("torch.", ""),
         "n_points": n_points,
         "n_iter": n_iter,
