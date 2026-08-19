@@ -349,6 +349,174 @@ def last_map_labels(ifs, n_points=400_000, burn_in=None, device=None,
 
 
 # --------------------------------------------------------------------------- #
+# Box-counting dimension, on the GPU
+# --------------------------------------------------------------------------- #
+
+
+def box_count(points, n_grid: int = 8192, bounds=None, device=None):
+    """Box counts N(eps) for eps = side/n_grid * factor^j, j = 0, 1, 2, ...
+
+    Implementation note (this is the part that is *not* a for-loop):
+    rasterise once into an (n_grid, n_grid) boolean occupancy grid, then get
+    every coarser scale for free by reshaping into blocks and reducing with
+    `any` over the block axes.  Coarsening by `factor` is a single tensor op,
+    so the whole multi-scale sweep costs about as much as one pass.
+
+    A *square* grid is used deliberately: the box must have the same side in x
+    and y or "eps" is not well defined.
+
+    `factor` matters more than it looks.  A set built from thirds (the Cantor
+    dust) sampled on a grid of halves is measured at scales that never line up
+    with its own construction, and the estimate is biased high by several
+    percent.  Setting factor = 3 (with n_grid a power of 3) removes that
+    mismatch.  See `part3_figures.py::fig_boxcount` for the demonstration.
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    pts = torch.as_tensor(np.asarray(points), device=device, dtype=torch.float64)
+
+    if bounds is None:
+        lo = pts.min(0).values
+        hi = pts.max(0).values
+    else:
+        lo = torch.tensor(bounds[:2], device=device, dtype=torch.float64)
+        hi = torch.tensor(bounds[2:], device=device, dtype=torch.float64)
+    side = float((hi - lo).max()) * 1.000001  # square, and strictly covering
+
+    ij = ((pts - lo) / side * n_grid).long().clamp_(0, n_grid - 1)
+    occ = torch.zeros(n_grid * n_grid, device=device, dtype=torch.bool)
+    occ[ij[:, 1] * n_grid + ij[:, 0]] = True
+    occ = occ.reshape(n_grid, n_grid)
+
+    eps, counts = [], []
+    g, b = n_grid, 1
+    while g >= 2:
+        eps.append(side * b / n_grid)
+        counts.append(int(occ.sum()))
+        occ = occ.reshape(g // 2, 2, g // 2, 2).any(3).any(1)
+        g //= 2
+        b *= 2
+    eps.append(side * b / n_grid)
+    counts.append(int(occ.sum()))
+    return np.array(eps), np.array(counts, dtype=np.int64)
+
+
+def fit_dimension(eps, counts, n_points, n_grid, lo_frac=0.01, hi_frac=0.25):
+    """Least-squares slope of log N vs log(1/eps), over the *valid* window.
+
+    Both ends of the curve are systematically wrong and must be excluded:
+
+      * coarse end -- once every box is occupied, N(eps) saturates at
+        (side/eps)^2 and the local slope is forced to 2, whatever the set is.
+      * fine end -- with a finite sample of P points, N(eps) can never exceed
+        P; boxes eventually isolate individual points and the slope collapses
+        towards 0.  This is a *sampling* artefact, not a property of the set.
+
+    We keep the window where  N < hi_frac * (side/eps)^2  (not saturated) and
+    N < lo_frac * P (far from the sample-size ceiling), and report R^2 so the
+    quality of the fit can be judged rather than assumed.
+    """
+    total_boxes = (eps.max() / eps) ** 2
+    ok = (counts > 8) & (counts < hi_frac * total_boxes) & \
+         (counts < lo_frac * n_points)
+    if ok.sum() < 3:  # fall back: drop two decades at each end
+        ok = np.zeros_like(counts, dtype=bool)
+        ok[2:-2] = True
+
+    x = np.log(1.0 / eps[ok])
+    y = np.log(counts[ok])
+    slope, intercept = np.polyfit(x, y, 1)
+    resid = y - (slope * x + intercept)
+    r2 = 1.0 - resid.var() / y.var() if y.var() > 0 else float("nan")
+    lo_eps, hi_eps = float(eps[ok].min()), float(eps[ok].max())
+    return {"dimension": float(slope), "intercept": float(intercept),
+            "r2": float(r2), "mask": ok, "n_used": int(ok.sum()),
+            "eps_range": (lo_eps, hi_eps),
+            "decades": float(np.log10(hi_eps / lo_eps)),
+            "pts_per_box_min": float(n_points / counts[ok].max())}
+
+
+def measure_dimension(ifs, n_points=2_000_000, n_iter=60, n_grid=4096,
+                      device=None, dtype=torch.float32, seed=7):
+    """End-to-end: sample the attractor, box-count it, fit, compare to theory."""
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    gen = torch.Generator(device=device).manual_seed(seed)
+    A, b, cdf = ifs.tensors(device, dtype)
+    pts = torch.rand((n_points, 2), generator=gen, device=device, dtype=dtype)
+    for _ in range(n_iter):
+        u = torch.rand(n_points, generator=gen, device=device, dtype=dtype)
+        idx = torch.searchsorted(cdf, u).clamp_(max=ifs.K - 1)
+        pts = torch.einsum("nij,nj->ni", A[idx], pts) + b[idx]
+
+    eps, counts = box_count(pts, n_grid=n_grid, device=device)
+    fit = fit_dimension(eps, counts, n_points=n_points, n_grid=n_grid)
+    exact = ifs.exact_dim if ifs.exact_dim is not None else ifs.moran_dimension()
+    fit.update({"eps": eps, "counts": counts, "exact": exact,
+                "name": ifs.name, "n_points": n_points, "n_grid": n_grid})
+    if exact is not None:
+        fit["abs_error"] = abs(fit["dimension"] - exact)
+        fit["rel_error"] = fit["abs_error"] / exact
+    return fit
+
+
+# --------------------------------------------------------------------------- #
+# Deterministic IFS (Hutchinson operator) --- the same attractor, no randomness
+# --------------------------------------------------------------------------- #
+
+
+def hutchinson(ifs: IFS, img: torch.Tensor, steps: int, bounds, device=None):
+    """Apply the Hutchinson operator  W(S) = union_i f_i(S)  to a binary image.
+
+    Implemented as a *pull-back*: a destination pixel p belongs to f_i(S) iff
+    f_i^{-1}(p) lies in S.  So one step is K calls to `grid_sample` followed by
+    an element-wise max over the K results -- again, pure batched tensor work.
+
+    This requires every A_i to be invertible.  The fern's stem map f1 has
+    det = 0 (it projects the plane onto a segment), so the pull-back form does
+    not apply to the fern -- which is precisely why the chaos game is the more
+    robust of the two algorithms.  Demonstrated here on Sierpinski instead.
+
+    Returns the sequence of images, illustrating Banach's theorem: *any*
+    starting image converges to the same attractor.
+    """
+    import torch.nn.functional as F
+
+    if device is None:
+        device = img.device
+    x0, x1, y0, y1 = bounds
+    H, W = img.shape
+    Ainv = torch.tensor(np.linalg.inv(ifs.A), device=device, dtype=torch.float32)
+    bt = torch.tensor(ifs.b, device=device, dtype=torch.float32)
+
+    # world coordinates of every destination pixel
+    ys = torch.linspace(y1, y0, H, device=device)
+    xs = torch.linspace(x0, x1, W, device=device)
+    gy, gx = torch.meshgrid(ys, xs, indexing="ij")
+    world = torch.stack([gx, gy], dim=-1).reshape(-1, 2)          # (H*W, 2)
+
+    # source = f_i^{-1}(dest) = A_i^{-1} (dest - b_i), for all i at once.
+    # -> (K, H*W, 2), computed in a single batched einsum.
+    shift = torch.einsum("kij,kj->ki", Ainv, bt)                  # (K, 2)
+    src = torch.einsum("kij,nj->kni", Ainv, world) - shift[:, None, :]
+
+    # normalise to grid_sample's [-1, 1] convention
+    gxn = (src[..., 0] - x0) / (x1 - x0) * 2 - 1
+    gyn = (y1 - src[..., 1]) / (y1 - y0) * 2 - 1
+    grid = torch.stack([gxn, gyn], dim=-1).reshape(ifs.K, H, W, 2)
+
+    frames = [img.clone()]
+    cur = img
+    for _ in range(steps):
+        batch = cur[None, None].expand(ifs.K, 1, H, W)
+        warped = F.grid_sample(batch, grid, mode="nearest",
+                               padding_mode="zeros", align_corners=False)
+        cur = warped.squeeze(1).amax(dim=0)
+        frames.append(cur.clone())
+    return frames
+
+
+# --------------------------------------------------------------------------- #
 # small helpers
 # --------------------------------------------------------------------------- #
 
