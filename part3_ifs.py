@@ -348,6 +348,56 @@ def last_map_labels(ifs, n_points=400_000, burn_in=None, device=None,
     return pts.cpu().numpy(), idx.cpu().numpy()
 
 
+def transient_snapshots(ifs, steps, n_points=20_000, device=None,
+                        dtype=torch.float64, seed=2, spread=6.0):
+    """Watch the initial condition being forgotten.
+
+    Two ensembles are launched from *different* random starting clouds but are
+    then driven by the *same* sequence of randomly chosen maps.  After k steps
+    the pair (x_k, y_k) satisfies
+
+        |x_k - y_k| = |f_{i_k} o ... o f_{i_1}(x_0) - (same)(y_0)|
+                    <= (prod_j sigma_1(A_{i_j})) |x_0 - y_0|
+                    <= L^k |x_0 - y_0|,      L = max_i sigma_1(A_i)
+
+    so this measures exactly the quantity the burn-in argument is about, with
+    no reference sample and therefore no sampling floor -- it decays all the
+    way to machine epsilon.  (Measuring distance to a finite point-cloud
+    "attractor" instead would bottom out at the cloud's nearest-neighbour
+    spacing, which is an artefact of the yardstick, not of the algorithm.)
+
+    Returns
+    -------
+    snaps : {k: (n_points, 2) array} -- ensemble A at the requested steps.
+    sep   : (K+1,) array -- max |x_k - y_k| at every step.
+    typical : float -- exp(sum_i p_i log sigma_1(A_i)), the *typical* per-step
+        contraction, which is faster than the worst case L.
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    gen = torch.Generator(device=device).manual_seed(seed)
+    A, b, cdf = ifs.tensors(device, dtype)
+
+    a_pts = (torch.rand((n_points, 2), generator=gen, device=device,
+                        dtype=dtype) - 0.5) * spread
+    b_pts = (torch.rand((n_points, 2), generator=gen, device=device,
+                        dtype=dtype) - 0.5) * spread
+
+    snaps, sep = {}, []
+    for k in range(max(steps) + 1):
+        if k in steps:
+            snaps[k] = a_pts.cpu().numpy().copy()
+        sep.append(float((a_pts - b_pts).norm(dim=1).max()))
+        u = torch.rand(n_points, generator=gen, device=device, dtype=dtype)
+        idx = torch.searchsorted(cdf, u).clamp_(max=ifs.K - 1)
+        a_pts = torch.einsum("nij,nj->ni", A[idx], a_pts) + b[idx]
+        b_pts = torch.einsum("nij,nj->ni", A[idx], b_pts) + b[idx]
+
+    s1 = ifs.lipschitz()
+    typical = float(np.exp(np.sum(ifs.p * np.log(np.maximum(s1, 1e-300)))))
+    return snaps, np.array(sep), typical
+
+
 # --------------------------------------------------------------------------- #
 # Box-counting dimension, on the GPU
 # --------------------------------------------------------------------------- #
