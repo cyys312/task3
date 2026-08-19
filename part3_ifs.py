@@ -403,7 +403,8 @@ def transient_snapshots(ifs, steps, n_points=20_000, device=None,
 # --------------------------------------------------------------------------- #
 
 
-def box_count(points, n_grid: int = 8192, bounds=None, device=None):
+def box_count(points, n_grid: int = 8192, bounds=None, device=None,
+              factor: int = 2):
     """Box counts N(eps) for eps = side/n_grid * factor^j, j = 0, 1, 2, ...
 
     Implementation note (this is the part that is *not* a for-loop):
@@ -440,12 +441,13 @@ def box_count(points, n_grid: int = 8192, bounds=None, device=None):
 
     eps, counts = [], []
     g, b = n_grid, 1
-    while g >= 2:
+    while g >= factor:
         eps.append(side * b / n_grid)
         counts.append(int(occ.sum()))
-        occ = occ.reshape(g // 2, 2, g // 2, 2).any(3).any(1)
-        g //= 2
-        b *= 2
+        occ = occ.reshape(g // factor, factor,
+                          g // factor, factor).any(3).any(1)
+        g //= factor
+        b *= factor
     eps.append(side * b / n_grid)
     counts.append(int(occ.sum()))
     return np.array(eps), np.array(counts, dtype=np.int64)
@@ -487,7 +489,7 @@ def fit_dimension(eps, counts, n_points, n_grid, lo_frac=0.01, hi_frac=0.25):
 
 
 def measure_dimension(ifs, n_points=2_000_000, n_iter=60, n_grid=4096,
-                      device=None, dtype=torch.float32, seed=7):
+                      device=None, dtype=torch.float32, seed=7, factor=2):
     """End-to-end: sample the attractor, box-count it, fit, compare to theory."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -499,10 +501,10 @@ def measure_dimension(ifs, n_points=2_000_000, n_iter=60, n_grid=4096,
         idx = torch.searchsorted(cdf, u).clamp_(max=ifs.K - 1)
         pts = torch.einsum("nij,nj->ni", A[idx], pts) + b[idx]
 
-    eps, counts = box_count(pts, n_grid=n_grid, device=device)
+    eps, counts = box_count(pts, n_grid=n_grid, device=device, factor=factor)
     fit = fit_dimension(eps, counts, n_points=n_points, n_grid=n_grid)
     exact = ifs.exact_dim if ifs.exact_dim is not None else ifs.moran_dimension()
-    fit.update({"eps": eps, "counts": counts, "exact": exact,
+    fit.update({"eps": eps, "counts": counts, "exact": exact, "factor": factor,
                 "name": ifs.name, "n_points": n_points, "n_grid": n_grid})
     if exact is not None:
         fit["abs_error"] = abs(fit["dimension"] - exact)
