@@ -199,6 +199,156 @@ VALIDATION_SET = [CANTOR_DUST, SIERPINSKI, SQUARE]
 
 
 # --------------------------------------------------------------------------- #
+# The chaos game --- vectorised over N independent chains
+# --------------------------------------------------------------------------- #
+
+
+def chaos_game(
+    ifs: IFS,
+    n_points: int = 1_000_000,
+    n_iter: int = 100,
+    burn_in: int | None = None,
+    bounds: tuple[float, float, float, float] | None = None,
+    resolution: int = 2000,
+    device=None,
+    dtype=torch.float32,
+    seed: int = 0,
+    return_last: bool = False,
+):
+    """Run `n_points` chaos-game chains in lock-step and histogram the orbit.
+
+    The classical chaos game is a *sequential* algorithm: one point, iterated
+    millions of times.  That is the worst possible shape for a GPU.  The fix
+    rests on a theorem, not on a hack:
+
+        The IFS attractor A is the unique fixed point of the Hutchinson
+        operator, which is a contraction on the compact subsets of R^2 under
+        the Hausdorff metric (Banach fixed point theorem).  Consequently the
+        chaos game converges to A from *any* starting point, and the limiting
+        empirical measure is the same for almost every realisation.
+
+    So instead of one chain of length T we run N chains of length T/N -- here,
+    N = 10^6..10^8 chains of length ~100.  Every step is then a single batched
+    tensor expression over all N points at once, with no Python-level loop over
+    points and no data-dependent branching.
+
+    Returns
+    -------
+    hist : (resolution_y, resolution_x) int64 tensor -- visit counts.
+    extent : (x0, x1, y0, y1) tuple for `imshow`.
+    info : dict of diagnostics (timing, burn-in, points plotted, ...).
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    gen = torch.Generator(device=device).manual_seed(seed)
+
+    A, b, cdf = ifs.tensors(device, dtype)
+
+    # -- 1. calibrate the viewport with a cheap pilot run ------------------- #
+    if bounds is None:
+        bounds = _estimate_bounds(ifs, device, dtype, gen)
+    x0, x1, y0, y1 = bounds
+    span = max(x1 - x0, y1 - y0)
+
+    W = resolution
+    H = max(1, int(round(resolution * (y1 - y0) / (x1 - x0))))
+    pixel = (x1 - x0) / W
+
+    if burn_in is None:
+        burn_in = max(1, ifs.burn_in_for(pixel_size=pixel, diameter=span))
+    n_iter = max(n_iter, burn_in + 1)
+
+    # -- 2. random initial points; they will be forgotten after burn-in ----- #
+    pts = torch.rand((n_points, 2), generator=gen, device=device, dtype=dtype)
+    pts[:, 0] = pts[:, 0] * (x1 - x0) + x0
+    pts[:, 1] = pts[:, 1] * (y1 - y0) + y0
+
+    hist = torch.zeros(H * W, device=device, dtype=torch.int64)
+    sx = W / (x1 - x0)
+    sy = H / (y1 - y0)
+
+    _sync(device)
+    t0 = _now()
+
+    for step in range(n_iter):
+        # --- pick one map per point, in parallel -------------------------- #
+        # searchsorted over the CDF is the vectorised form of "roll a die":
+        # O(log K) per point, no host round-trip, no per-point branch.
+        u = torch.rand(n_points, generator=gen, device=device, dtype=dtype)
+        idx = torch.searchsorted(cdf, u).clamp_(max=ifs.K - 1)
+
+        # --- apply it: one einsum == n_points matrix-vector products ------- #
+        pts = torch.einsum("nij,nj->ni", A[idx], pts) + b[idx]
+
+        # --- accumulate, but only once the transient has died out ---------- #
+        if step >= burn_in:
+            ix = ((pts[:, 0] - x0) * sx).long()
+            iy = ((y1 - pts[:, 1]) * sy).long()  # flip y: row 0 is the top
+            ok = (ix >= 0) & (ix < W) & (iy >= 0) & (iy < H)
+            hist += torch.bincount(iy[ok] * W + ix[ok], minlength=H * W)
+
+    _sync(device)
+    elapsed = _now() - t0
+
+    plotted = int((n_iter - burn_in) * n_points)
+    info = {
+        "device": str(device),
+        "dtype": str(dtype).replace("torch.", ""),
+        "n_points": n_points,
+        "n_iter": n_iter,
+        "burn_in": burn_in,
+        "points_plotted": plotted,
+        "map_applications": n_iter * n_points,
+        "seconds": elapsed,
+        "points_per_second": plotted / max(elapsed, 1e-9),
+        "pixel_size": pixel,
+        "resolution": (H, W),
+        "occupancy": float((hist > 0).float().mean()),
+    }
+    out = (hist.reshape(H, W), (x0, x1, y0, y1), info)
+    return (*out, pts) if return_last else out
+
+
+def _estimate_bounds(ifs, device, dtype, gen, n=200_000, iters=60, pad=0.02):
+    """Cheap pilot run to find the attractor's bounding box."""
+    A, b, cdf = ifs.tensors(device, dtype)
+    pts = torch.zeros((n, 2), device=device, dtype=dtype)
+    for _ in range(iters):
+        u = torch.rand(n, generator=gen, device=device, dtype=dtype)
+        idx = torch.searchsorted(cdf, u).clamp_(max=ifs.K - 1)
+        pts = torch.einsum("nij,nj->ni", A[idx], pts) + b[idx]
+    lo = pts.min(0).values.tolist()
+    hi = pts.max(0).values.tolist()
+    mx = (hi[0] - lo[0]) * pad
+    my = (hi[1] - lo[1]) * pad
+    return (lo[0] - mx, hi[0] + mx, lo[1] - my, hi[1] + my)
+
+
+def last_map_labels(ifs, n_points=400_000, burn_in=None, device=None,
+                    dtype=torch.float32, seed=1):
+    """Return points on the attractor together with *which* map produced them.
+
+    Colouring by this label is the clearest way to answer the demo question
+    "how is the fractal formed?": each f_i paints one recognisable piece, and
+    the union of the four pieces is the whole fern again -- self-similarity
+    made visible.
+    """
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    gen = torch.Generator(device=device).manual_seed(seed)
+    A, b, cdf = ifs.tensors(device, dtype)
+    if burn_in is None:
+        burn_in = 60
+    pts = torch.rand((n_points, 2), generator=gen, device=device, dtype=dtype)
+    idx = None
+    for _ in range(burn_in + 1):
+        u = torch.rand(n_points, generator=gen, device=device, dtype=dtype)
+        idx = torch.searchsorted(cdf, u).clamp_(max=ifs.K - 1)
+        pts = torch.einsum("nij,nj->ni", A[idx], pts) + b[idx]
+    return pts.cpu().numpy(), idx.cpu().numpy()
+
+
+# --------------------------------------------------------------------------- #
 # small helpers
 # --------------------------------------------------------------------------- #
 
