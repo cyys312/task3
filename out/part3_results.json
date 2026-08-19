@@ -1,52 +1,383 @@
 {
-  "device": "cpu",
-  "torch": "2.13.0+cpu",
-  "scale": "small",
+  "device": "cuda",
+  "torch": "2.13.0+cu130",
+  "scale": "full",
   "config": {
-    "hero_points": 400000,
-    "hero_res": 700,
-    "map_points": 250000,
-    "dim_points": 1500000,
-    "dim_grid": 2048,
-    "prob_points": 400000,
-    "var_points": 200000,
+    "hero_points": 20000000,
+    "hero_res": 2400,
+    "map_points": 1500000,
+    "dim_points": 20000000,
+    "dim_grid": 8192,
+    "prob_points": 4000000,
+    "var_points": 1500000,
     "scaling": [
-      1000,
       10000,
       100000,
-      1000000
+      1000000,
+      10000000,
+      100000000
     ],
     "net_eps": [
       0.08,
       0.04,
       0.02,
       0.01,
-      0.005
+      0.005,
+      0.0025,
+      0.00125
     ]
   },
-  "gpu": null,
+  "gpu": "NVIDIA A100-PCIE-40GB",
   "fern_structure": "Barnsley fern: K = 4 affine maps\n   map       p   sigma1   sigma2       det  kind\n  f1     0.010   0.1600   0.0000    0.0000  SINGULAR (rank 1)\n  f2     0.850   0.8509   0.8509    0.7241  similarity\n  f3     0.070   0.3407   0.3047    0.1038  self-affine\n  f4     0.070   0.3792   0.2870   -0.1088  self-affine, flips orientation\n  Lipschitz constant L = max sigma1 = 0.8509\n  Moran similarity dimension: N/A (not all maps are similarities)",
   "fern_affinity_dimension": 1.8433176261664808,
   "hero_render": {
-    "device": "cpu",
+    "device": "NVIDIA A100-PCIE-40GB",
     "dtype": "float32",
-    "n_points": 400000,
+    "n_points": 20000000,
     "n_iter": 140,
-    "burn_in": 46,
-    "points_plotted": 37600000,
-    "map_applications": 56000000,
-    "seconds": 4.58609408800001,
-    "points_per_second": 8198697.906871186,
-    "pixel_size": 0.007186233357020787,
+    "burn_in": 53,
+    "points_plotted": 1740000000,
+    "map_applications": 2800000000,
+    "seconds": 5.75447627203539,
+    "points_per_second": 302373303.45000315,
+    "pixel_size": 0.0020961071570714316,
     "resolution": [
-      1438,
-      700
+      4940,
+      2400
     ],
-    "occupancy": 0.3119719922542572
+    "occupancy": 0.2549029290676117
   },
   "hero_dimension": {
-    "measured": 1.8022987642613302,
-    "r2": 0.9999334157440564,
+    "measured": 1.83383884574377,
+    "r2": 0.9999996559668795,
     "affinity_bound": 1.8433176261664808
-  }
+  },
+  "burn_in": {
+    "lipschitz_L": 0.8509406559801923,
+    "typical_contraction": 0.7417193382238177,
+    "separation_by_step": [
+      7.698121776800104,
+      6.550644794565684,
+      5.574209978580955,
+      4.743321895745011,
+      4.03628544549047,
+      3.434639384708963,
+      2.9226742910796486,
+      2.439428913675758,
+      2.0758092400202974,
+      1.7663867680810714,
+      1.436901469986165,
+      1.2227178794489297,
+      1.0328575344222348,
+      0.8683733726376631,
+      0.7335976940173514,
+      0.6197082215971768,
+      0.5273349206022205,
+      0.44873072325851604,
+      0.38098013104124695,
+      0.324191482623658,
+      0.2758677128869667,
+      0.23474705256779044,
+      0.19353651684347198,
+      0.16468809059890524,
+      0.13941031953716607,
+      0.11862990875736418,
+      0.10094701237686222,
+      0.08589991693120785,
+      0.07309573166208619,
+      0.06220012984988728,
+      0.05292861929651648,
+      0.045039114024303314,
+      0.03832561323260738,
+      0.03261282246499811,
+      0.027751576541732416,
+      0.023614944746906404,
+      0.02009491657386829,
+      0.017099581491234212,
+      0.013239778926261778,
+      0.011266266164546124,
+      0.009586923920506875,
+      0.008157903329748506,
+      0.006941891610839146,
+      0.005907137801070456,
+      0.005026623715408363,
+      0.0042773584817553025,
+      0.00363977823232714,
+      0.0030972352766393194,
+      0.0026355634180288733,
+      0.00157106140912964,
+      0.0013368800260694599
+    ],
+    "burn_in_used": 54
+  },
+  "dimension_table": [
+    {
+      "set": "Cantor dust",
+      "measured": 1.2317,
+      "exact": 1.2619,
+      "affinity_dim": 1.2619,
+      "r2": 0.999185,
+      "scales_used": 7,
+      "decades": 1.81,
+      "min_points_per_box": 152.6,
+      "rel_error_pct": 2.39
+    },
+    {
+      "set": "Sierpinski triangle",
+      "measured": 1.5865,
+      "exact": 1.585,
+      "affinity_dim": 1.585,
+      "r2": 0.999991,
+      "scales_used": 4,
+      "decades": 0.9,
+      "min_points_per_box": 228.6,
+      "rel_error_pct": 0.1
+    },
+    {
+      "set": "Filled square",
+      "measured": 1.9993,
+      "exact": 2.0,
+      "affinity_dim": 2.0,
+      "r2": 1.0,
+      "scales_used": 10,
+      "decades": 2.71,
+      "min_points_per_box": 4.8,
+      "rel_error_pct": 0.03
+    },
+    {
+      "set": "Barnsley fern",
+      "measured": 1.8339,
+      "exact": null,
+      "affinity_dim": 1.8433,
+      "r2": 1.0,
+      "scales_used": 4,
+      "decades": 0.9,
+      "min_points_per_box": 111.7
+    }
+  ],
+  "window_sensitivity_fern": [
+    {
+      "lo_frac": 0.005,
+      "hi_frac": 0.15,
+      "dimension": 1.8095,
+      "scales": 10,
+      "r2": 0.99992
+    },
+    {
+      "lo_frac": 0.005,
+      "hi_frac": 0.25,
+      "dimension": 1.8339,
+      "scales": 3,
+      "r2": 1.0
+    },
+    {
+      "lo_frac": 0.005,
+      "hi_frac": 0.5,
+      "dimension": 1.8068,
+      "scales": 7,
+      "r2": 0.99986
+    },
+    {
+      "lo_frac": 0.01,
+      "hi_frac": 0.15,
+      "dimension": 1.8095,
+      "scales": 10,
+      "r2": 0.99992
+    },
+    {
+      "lo_frac": 0.01,
+      "hi_frac": 0.25,
+      "dimension": 1.8339,
+      "scales": 4,
+      "r2": 1.0
+    },
+    {
+      "lo_frac": 0.01,
+      "hi_frac": 0.5,
+      "dimension": 1.8125,
+      "scales": 8,
+      "r2": 0.99989
+    },
+    {
+      "lo_frac": 0.02,
+      "hi_frac": 0.15,
+      "dimension": 1.8095,
+      "scales": 10,
+      "r2": 0.99992
+    },
+    {
+      "lo_frac": 0.02,
+      "hi_frac": 0.25,
+      "dimension": 1.8339,
+      "scales": 4,
+      "r2": 1.0
+    },
+    {
+      "lo_frac": 0.02,
+      "hi_frac": 0.5,
+      "dimension": 1.8125,
+      "scales": 8,
+      "r2": 0.99989
+    },
+    {
+      "lo_frac": 0.05,
+      "hi_frac": 0.15,
+      "dimension": 1.8095,
+      "scales": 10,
+      "r2": 0.99992
+    },
+    {
+      "lo_frac": 0.05,
+      "hi_frac": 0.25,
+      "dimension": 1.8285,
+      "scales": 5,
+      "r2": 0.99999
+    },
+    {
+      "lo_frac": 0.05,
+      "hi_frac": 0.5,
+      "dimension": 1.8148,
+      "scales": 9,
+      "r2": 0.99992
+    }
+  ],
+  "grid_alignment": [
+    {
+      "set": "Cantor dust",
+      "grid_factor": 2,
+      "measured": 1.2317,
+      "exact": 1.2619,
+      "rel_error_pct": 2.39
+    },
+    {
+      "set": "Cantor dust",
+      "grid_factor": 3,
+      "measured": 1.2667,
+      "exact": 1.2619,
+      "rel_error_pct": 0.39
+    },
+    {
+      "set": "Sierpinski triangle",
+      "grid_factor": 2,
+      "measured": 1.5865,
+      "exact": 1.585,
+      "rel_error_pct": 0.1
+    },
+    {
+      "set": "Sierpinski triangle",
+      "grid_factor": 3,
+      "measured": 1.5962,
+      "exact": 1.585,
+      "rel_error_pct": 0.71
+    }
+  ],
+  "probability_study": [
+    {
+      "weights": "Barnsley fern",
+      "measured_dim": 1.7999,
+      "occupancy": 0.3046
+    },
+    {
+      "weights": "Barnsley fern [det]",
+      "measured_dim": 1.8051,
+      "occupancy": 0.3042
+    },
+    {
+      "weights": "Barnsley fern [uniform]",
+      "measured_dim": 1.3067,
+      "occupancy": 0.0849
+    }
+  ],
+  "deterministic_net": [
+    {
+      "eps": 0.08,
+      "depth": 31,
+      "peak_live": 3319,
+      "n_points": 75043,
+      "dimension": 1.7379,
+      "r2": 0.99997,
+      "scales": 3
+    },
+    {
+      "eps": 0.04,
+      "depth": 35,
+      "peak_live": 14327,
+      "n_points": 309703,
+      "dimension": 1.7572,
+      "r2": 0.99991,
+      "scales": 4
+    },
+    {
+      "eps": 0.02,
+      "depth": 40,
+      "peak_live": 50576,
+      "n_points": 1272172,
+      "dimension": 1.7667,
+      "r2": 0.99994,
+      "scales": 5
+    },
+    {
+      "eps": 0.01,
+      "depth": 44,
+      "peak_live": 216617,
+      "n_points": 5253025,
+      "dimension": 1.8063,
+      "r2": 0.99999,
+      "scales": 3
+    },
+    {
+      "eps": 0.005,
+      "depth": 48,
+      "peak_live": 744595,
+      "n_points": 21614140,
+      "dimension": 1.8174,
+      "r2": 0.99999,
+      "scales": 4
+    },
+    {
+      "eps": 0.0025,
+      "depth": 53,
+      "peak_live": 3097552,
+      "n_points": 81892192,
+      "dimension": 1.8227,
+      "r2": 0.99999,
+      "scales": 5
+    },
+    {
+      "eps": 0.00125,
+      "depth": 57,
+      "peak_live": 10210391,
+      "n_points": 329149789,
+      "dimension": 1.825,
+      "r2": 0.99999,
+      "scales": 6
+    }
+  ],
+  "scaling": [
+    {
+      "n_chains": 10000,
+      "seconds": 0.0156,
+      "points_per_s": 7715268
+    },
+    {
+      "n_chains": 100000,
+      "seconds": 0.0171,
+      "points_per_s": 70015840
+    },
+    {
+      "n_chains": 1000000,
+      "seconds": 0.1161,
+      "points_per_s": 103359811
+    },
+    {
+      "n_chains": 10000000,
+      "seconds": 1.1554,
+      "points_per_s": 103859947
+    },
+    {
+      "n_chains": 100000000,
+      "seconds": 11.4959,
+      "points_per_s": 104384913
+    }
+  ]
 }

@@ -1,8 +1,8 @@
 ==========================================================================
 Barnsley fern -- fractal dimension analysis
 ==========================================================================
-  torch 2.13.0+cpu   device cpu
-  scale = small   samples = 2,000,000   grid = 2048
+  torch 2.13.0+cu130   device cuda (NVIDIA A100-PCIE-40GB)
+  scale = full   samples = 20,000,000   grid = 8192
 
 ==========================================================================
 [1/3]  Structural diagnostics -- does a closed form exist?
@@ -37,18 +37,18 @@ Barnsley fern: K = 4 affine maps
 
   set                     measured    exact    error       R^2  scales
   --------------------------------------------------------------------
-  Cantor dust               1.2663   1.2619    0.35%   0.99682       4
-  Sierpinski triangle       1.6068   1.5850    1.38%   0.99993       8
-  Filled square             1.9999   2.0000    0.00%   1.00000       8
+  Cantor dust               1.2317   1.2619    2.39%   0.99918       7
+  Sierpinski triangle       1.5865   1.5850    0.10%   0.99999       4
+  Filled square             1.9993   2.0000    0.03%   1.00000      10
 
-  ==> worst error 1.38%  -->  estimator ACCEPTED
+  ==> worst error 2.39%  -->  estimator ACCEPTED
 
 ==========================================================================
 [3/3]  Barnsley fern
 ==========================================================================
   (a) chaos game, Barnsley's probabilities
-      D_B = 1.8000    R^2 = 0.99992    8 scales over 2.11 decades
-      fit window: eps in [1.95e-02, 2.50e+00],  >= 40 points per box
+      D_B = 1.8338    R^2 = 1.00000    4 scales over 0.90 decades
+      fit window: eps in [9.76e-03, 7.81e-02],  >= 112 points per box
 
   (b) deterministic eps-net -- uses NO probabilities at all,
       so it measures the support rather than the invariant measure
@@ -59,18 +59,20 @@ Barnsley fern: K = 4 affine maps
            0.02      40      50,576    1,272,172   1.7667   0.99994
            0.01      44     216,617    5,253,025   1.8063   0.99999
           0.005      48     744,595   21,614,140   1.8174   0.99999
+         0.0025      53   3,097,552   81,892,192   1.8227   0.99999
+        0.00125      57  10,210,391  329,149,789   1.8250   0.99999
 
 ==========================================================================
 RESULT
 ==========================================================================
-  chaos game (Barnsley p)      D_B = 1.8000
-  deterministic net, finest    D_B = 1.8174
+  chaos game (Barnsley p)      D_B = 1.8338
+  deterministic net, finest    D_B = 1.8250
   Falconer affinity dimension        1.8433   (theoretical upper bound)
 
-  Two independent methods agree to 0.017, and both sit
+  Two independent methods agree to 0.009, and both sit
   below the bound as they must.  Refining the net raises the
   estimate monotonically towards 1.843: the deficit is a
   finite-resolution effect, not a disagreement with theory.
 
-  ==> D_B(Barnsley fern) ~ 1.82, bounded above by 1.8433
+  ==> D_B(Barnsley fern) ~ 1.83, bounded above by 1.8433
 
